@@ -277,9 +277,39 @@ ggplot(older_adults, aes(x = reorder(county_lhj, population_65_plus),
   ) +
   theme_minimal()
 
+# =====================================================
+# DATA ENCODING AND PCA
+# =====================================================
 
+# Selecting three years that will be analized.
+pop_base_year <- pop_data %>%
+  filter(county_indicator == 1,
+         county_lhj != "Madera",
+         year %in% c(2000, 2015, 2030)) %>%
+  mutate(age_group = case_when(
+    age <= 14 ~ "Children",
+    age <= 64 ~ "Working_age_adults",
+    age >= 65 ~ "Older_adults"
+  ))
+pop_base_year
 
+# Convert age, race and sex categories into separate binary columns.
+bi_age_sex <- bind_cols(
+  pop_base_year %>% select(county_lhj, year, population),
+  as.data.frame(model.matrix(~ age_group - 1, pop_base_year)),
+  as.data.frame(model.matrix(~ race_eth - 1, pop_base_year)),
+  as.data.frame(model.matrix(~ sex - 1, pop_base_year))
+)
+bi_age_sex
 
-
-
-
+# Calculate population percentages for each area and year.
+pop_base_year <- encoded %>%
+  group_by(county_lhj, year) %>%
+  summarise(
+    total = sum(population),
+    across(-population, ~ sum(.x * population)),
+    .groups = "drop"
+  ) %>%
+  mutate(across(-c(county_lhj, year, total),
+                ~ .x / total * 100))
+pop_base_year
