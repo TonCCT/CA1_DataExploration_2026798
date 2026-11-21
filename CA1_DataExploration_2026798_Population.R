@@ -313,3 +313,37 @@ pop_base_year <- encoded %>%
   mutate(across(-c(county_lhj, year, total),
                 ~ .x / total * 100))
 pop_base_year
+
+# Select and standardise the demographic variables.
+pop_features <- pop_base_year %>%
+  select(-county_lhj, -year, -total)
+
+pop_features <- pop_features[
+  , sapply(pop_features, sd) > 0
+]
+
+pop_scaled <- scale(pop_features)
+pop_features
+
+# Examine relationships between demographic variables.
+cor_matrix <- cor(pop_features)
+cor_matrix
+
+
+# Reduce the demographic variables into principal components.
+pop_result <- prcomp(pop_scaled,
+                     center = FALSE, scale. = FALSE)
+
+# Examine the variation explained by each component.
+summary(pop_result)
+
+# Display the areas and years using the first two components.
+pop_scores <- as.data.frame(pop_result$x) %>%
+  bind_cols(pop_base_year %>% select(county_lhj, year))
+
+ggplot(pop_scores, aes(PC1, PC2, colour = factor(year))) +
+  geom_point(size = 3) +
+  labs(title = "PCA of Population Profiles (2000-2030)",
+       x = "PC1", y = "PC2", colour = "Year") +
+  theme_minimal()
+
