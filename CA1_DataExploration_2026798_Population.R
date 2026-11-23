@@ -23,7 +23,7 @@ library(naniar)
 library(scales)
 
 # =====================================================
-# INITIAL DATA EXPLORATION
+# 1- INITIAL DATA EXPLORATION
 # =====================================================
 
 getwd()
@@ -79,6 +79,7 @@ sapply(pop_data, function (x)
 
 numeric_data <- pop_data %>%
   select(where(is.numeric))
+numeric_data
 
 # Showing numerical variables
 
@@ -140,18 +141,8 @@ ggplot(pop_data, aes(x = race_eth, y = log10(population + 1))) +
   ) +
   theme_minimal()
 
-# Display the frequency distribution of population values using a logarithmic transformation.
-ggplot(pop_data, aes(x = log10(population + 1))) +
-  geom_histogram(bins = 50, fill = "steelblue", color = "white") +
-  labs(
-    title = "Distribution of Population Values",
-    x = "Population",
-    y = "Number of Records"
-  ) +
-  theme_minimal()
-
 # =====================================================
-# PREPARING THE DATA
+# 2- PREPARING THE DATA
 # =====================================================
 
 # How has the population of California changed between 2000 and 2030 in terms of age and race
@@ -169,12 +160,6 @@ county_data <- county_data %>%
       age >= 65 ~ "Older adults (65+)"
     )
   )
-county_data %>% ggplot() +
-  geom_bar(mapping = aes(x = age_group, fill = age_group), color = "orange") +
-  scale_y_continuous(labels = label_comma()) +
-  labs(title = "Group ages Children , adults and olders", x = "Population",
-       y = "Group by ages") +
-  coord_flip() + theme_minimal() + theme(text = element_text(size = 12))
 
 # =====================================================
 # POPULATION CHANGES BY AGE GROUP
@@ -185,7 +170,24 @@ county_data %>% ggplot() +
 age_population <- county_data %>%
   group_by(year, age_group) %>%
   summarise(total_population = sum(population), .groups = "drop")
-age_population
+
+# Calculate the total population for each year.
+year_total <- county_data %>%
+  group_by(year) %>%
+  summarise(year_total = sum(population), .groups = "drop")
+year_total
+
+# Calculate the percentage of each age group per year.
+age_share <- age_population %>%
+  left_join(year_total, by = "year") %>%
+  mutate(percentage = total_population / year_total * 100)
+
+# Display the percentage changes in age groups over time.
+ggplot(age_share, aes(x = year, y = percentage, colour = age_group)) +
+  geom_line(linewidth = 1.1) +
+  labs(title = "Age Composition Over Time (2000-2030)",
+       x = "Year", y = "Population (%)", colour = "Age Group") +
+  theme_minimal()
 
 # Create a line graph to compare population changes between age groups.
 ggplot(age_population, aes(x = year, y = total_population, colour = age_group)) +
@@ -199,16 +201,27 @@ ggplot(age_population, aes(x = year, y = total_population, colour = age_group)) 
   ) +
   theme_minimal()
 
-# =====================================================
-# POPULATION CHANGES BY RACE AND ETHNICITY
-# How the different groups change over time. Helps understand the communities served by health services.
-# =====================================================
-
 # Calculate the total population for each racial and ethnic group and year.
 race_population <- county_data %>%
   group_by(year, race_eth) %>%
   summarise(total_population = sum(population), .groups = "drop")
 race_population
+
+# Calculate the percentage of each racial/ethnic group per year.
+race_share <- race_population %>%
+  left_join(year_total, by = "year") %>%
+  mutate(percentage = total_population / year_total * 100) %>%
+  filter(year %in% c(2000, 2030))
+
+# Compare racial and ethnic population percentages in 2000 and 2030.
+ggplot(race_share,
+       aes(x = race_eth, y = percentage, fill = factor(year))) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(title = "Racial/Ethnic Composition: 2000 vs 2030",
+       x = "Racial/Ethnic Group", y = "Population (%)",
+       fill = "Year") +
+  theme_minimal()
 
 # Create a line graph to compare population changes between racial and ethnic groups.
 ggplot(race_population, aes(x = year, y = total_population, colour = race_eth)) +
@@ -221,11 +234,6 @@ ggplot(race_population, aes(x = year, y = total_population, colour = race_eth)) 
     colour = "Racial/Ethnic Group"
   ) +
   theme_minimal()
-
-# =====================================================
-# GE DISTRIBUTION BY RACE AND ETHNICITY
-# Differences in age structure between groups. Helps identify different population needs.
-# =====================================================
 
 # Select 2030 to compare the projected age distribution between racial and ethnic groups.
 age_race <- county_data %>%
@@ -252,11 +260,6 @@ ggplot(age_race, aes(x = race_eth, y = percentage, fill = age_group)) +
   ) +
   theme_minimal()
 
-# =====================================================
-# PUBLIC HEALTH PLANNING
-# Which areas have more older adults. Helps plan older adult care and support services.
-# =====================================================
-
 # Calculate the projected number of older adults in each area in 2030.
 older_adults <- county_data %>%
   filter(year == 2030, age >= 65) %>%
@@ -278,13 +281,12 @@ ggplot(older_adults, aes(x = reorder(county_lhj, population_65_plus),
   theme_minimal()
 
 # =====================================================
-# DATA ENCODING AND PCA
+# 3- DATA ENCODING AND PCA
 # =====================================================
 
 # Selecting three years that will be analized.
 pop_base_year <- pop_data %>%
   filter(county_indicator == 1,
-         county_lhj != "Madera",
          year %in% c(2000, 2015, 2030)) %>%
   mutate(age_group = case_when(
     age <= 14 ~ "Children",
@@ -303,15 +305,16 @@ bi_age_sex <- bind_cols(
 bi_age_sex
 
 # Calculate population percentages for each area and year.
-pop_base_year <- encoded %>%
+pop_base_year <- bi_age_sex %>%
   group_by(county_lhj, year) %>%
   summarise(
     total = sum(population),
     across(-population, ~ sum(.x * population)),
     .groups = "drop"
   ) %>%
-  mutate(across(-c(county_lhj, year, total),
-                ~ .x / total * 100))
+  mutate(
+    across(-c(county_lhj, year, total), ~ .x / total * 100)
+  )
 pop_base_year
 
 # Select and standardise the demographic variables.
@@ -329,10 +332,23 @@ pop_features
 cor_matrix <- cor(pop_features)
 cor_matrix
 
+# Display correlations between demographic variables.
+cor_data <- as.data.frame(as.table(cor_matrix))
+
+ggplot(cor_data, aes(Var1, Var2, fill = Freq)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "skyblue",
+                       high = "blue", midpoint = 0) +
+  labs(title = "Demographic Correlation Heatmap",
+       x = "Variables", y = "Variables",
+       fill = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 # Reduce the demographic variables into principal components.
 pop_result <- prcomp(pop_scaled,
                      center = FALSE, scale. = FALSE)
+pop_result
 
 # Examine the variation explained by each component.
 summary(pop_result)
@@ -347,3 +363,22 @@ ggplot(pop_scores, aes(PC1, PC2, colour = factor(year))) +
        x = "PC1", y = "PC2", colour = "Year") +
   theme_minimal()
 
+# Group areas and years with similar demographic profiles.
+set.seed(123)
+kmeans_result <- kmeans(pop_scaled, centers = 3, nstart = 25)
+kmeans_result
+
+# Display the demographic clusters.
+pop_scores$cluster <- as.factor(kmeans_result$cluster)
+
+ggplot(pop_scores, aes(PC1, PC2, colour = cluster)) +
+  geom_point(size = 3) +
+  labs(title = "K-Means Demographic Clusters",
+       x = "PC1", y = "PC2", colour = "Cluster") +
+  theme_minimal()
+
+# Show the cluster assigned to each area and year.
+pop_scores %>%
+  select(county_lhj, year, cluster) %>%
+  arrange(cluster, year)
+pop_scores
